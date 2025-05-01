@@ -2,7 +2,7 @@
 Depth Estimation Pipeline for animal to camera distance estimation
 
 #### Morphocam GUI
-![GUI](https://github.com/Morphocam/Depth-Estimation/tree/main/images/GUI.png)
+![GUI](https://github.com/Morphocam/Depth-Estimation/tree/main/images/GUI.png?raw=true)
 
 
 ## How to Run the project
