@@ -17,9 +17,9 @@ class UniDepthv2(DownloadableWeights):
             return
         self._model_loaded = True
 
-        weights_url = "https://huggingface.co/ibaiGorordo/unidepth-v2-vits14-onnx"
-
-        weights_path = self.get_weights(weights_url)
+        weights_url = "https://huggingface.co/ibaiGorordo/unidepth-v2-vits14-onnx/blob/main/unidepthv2_vits14_simp.onnx"
+        weights_md5 = "ea23a746bfa4b805e23625f640b71c3e32ae458f4740c74137330c8e9d374f01"
+        weights_path = self.get_weights(weights_url, weights_md5)
 
         providers = get_onnxruntime_providers()
         try:
