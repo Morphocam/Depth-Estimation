@@ -2,7 +2,8 @@
 Depth Estimation Pipeline for animal to camera distance estimation
 
 #### Morphocam GUI
-![GUI](https://github.com/Morphocam/Depth-Estimation/tree/main/images/GUI.jpg)
+![GUI](https://github.com/Morphocam/Depth-Estimation/tree/main/images/GUI.png)
+
 
 ## How to Run the project
 Setup and python environment before cloning the code (https://docs.python.org/3/library/venv.html)
