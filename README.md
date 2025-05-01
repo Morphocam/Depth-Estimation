@@ -9,4 +9,4 @@ Setup and python environment before cloning the code (https://docs.python.org/3/
 ### run the following cammand
 `python main.py`
 
-NOTE: This repository is still under development and some of the features may be inactive. We will soon provide a graphical interfaces for Windows, macOS and Linux.
+NOTE: This repository is still under development and some of the features may be inactive. We will soon provide an executable graphical interfaces for Windows, macOS and Linux.
