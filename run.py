@@ -83,7 +83,7 @@ def run(config: Config):
 
             yield StatusUpdate(transect_id, transect_idx, len(transect_dirs))
 
-            exp = -1 if config.calibrate_metric else 1
+            # exp = -1 if config.calibrate_metric else 1
             calibration_frames = {}
             farthest_calibration_frame_disp = None
 
@@ -100,12 +100,10 @@ def run(config: Config):
                         os.path.basename(calibration_frame_filename)
                     )[0]
                     dist = get_calibration_frame_dist(transect_dir, calibration_frame_id)
-                    img = crop(
-                        cv2.imread(calibration_frame_filename),
-                        config.crop_top, config.crop_bottom, config.crop_left, config.crop_right,
-                    )
-                    mask = crop(
-                        cv2.imread(
+                    ### changes here
+                    exp = 1
+                    img = cv2.imread(calibration_frame_filename)
+                    mask = cv2.imread(
                             get_extension_agnostic_path(
                                 os.path.join(
                                     transect_dir,
@@ -116,9 +114,27 @@ def run(config: Config):
                             ),
                             cv2.IMREAD_GRAYSCALE,
                         )
-                        > 127,
-                        config.crop_top, config.crop_bottom, config.crop_left, config.crop_right,
-                    )
+
+                    ### till here
+                    # img = crop(
+                    #     cv2.imread(calibration_frame_filename),
+                    #     config.crop_top, config.crop_bottom, config.crop_left, config.crop_right,
+                    # )
+                    # mask = crop(
+                    #     cv2.imread(
+                    #         get_extension_agnostic_path(
+                    #             os.path.join(
+                    #                 transect_dir,
+                    #                 "calibration_frames_masks",
+                    #                 calibration_frame_id,
+                    #             ),
+                    #             config.intensity_image_extensions,
+                    #         ),
+                    #         cv2.IMREAD_GRAYSCALE,
+                    #     )
+                    #     > 127,
+                    #     config.crop_top, config.crop_bottom, config.crop_left, config.crop_right,
+                    # )
                     disp = depth_estimation_model(img)
                     # print("Disp : ", disp)
                     disp = np.ma.masked_where(mask, disp)
@@ -139,8 +155,8 @@ def run(config: Config):
                     for dist, disp in calibration_frames.items():
                         yield
                         disp = resize(disp, farthest_calibration_frame_disp.shape)
-                        if config.calibrate_metric:
-                            disp = np.clip(disp, eps, np.inf)
+                        # if config.calibrate_metric:
+                        #     disp = np.clip(disp, eps, np.inf)
                         disp_calibrated = do_calibrate(
                             disp ** exp,
                             farthest_calibration_frame_disp ** exp,
@@ -219,9 +235,10 @@ def run(config: Config):
                 yield
 
                 # discard all non-animal detections
-                if config.detect_humans:
-                    correct_label_idx = np.nonzero(
-                        (labels.flatten() == MegaDetectorLabel.ANIMAL) | (labels.flatten() == MegaDetectorLabel.PERSON))
+                if False:
+                    continue
+                # if config.detect_humans: correct_label_idx = np.nonzero( (labels.flatten() ==
+                # MegaDetectorLabel.ANIMAL) | (labels.flatten() == MegaDetectorLabel.PERSON))
                 else:
                     correct_label_idx = np.nonzero(labels.flatten() == MegaDetectorLabel.ANIMAL)
                 scores, labels, boxes = scores[correct_label_idx], labels[correct_label_idx], boxes[correct_label_idx]
