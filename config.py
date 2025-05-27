@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import List
-from custom_types import DetectionSamplingMethod, SampleFrom, MultipleAnimalReduction, RegressionMethod, DepthEstimationModel
+from custom_types import DetectionSamplingMethod, SampleFrom, MultipleAnimalReduction, RegressionMethod, \
+    DepthEstimationModel, BreakPointsMethod
 
 
 @dataclass
@@ -12,23 +13,23 @@ class Config:
 
     # file extension parameters
     depth_image_extensions: List[str] = field(default_factory=lambda: [".exr"])
-    intensity_image_extensions: List[str] = field(default_factory=lambda: [".png", ".PNG", ".jpg", ".jpeg", ".JPG", ".JPEG"])
+    intensity_image_extensions: List[str] = field(
+        default_factory=lambda: [".png", ".PNG", ".jpg", ".jpeg", ".JPG", ".JPEG"])
 
     # detection parameters
-    bbox_confidence_threshold: float = 0.4  # minimal confidence of detections
+    bbox_confidence_threshold: float = 0.2  # minimal confidence of detections
     # detect_humans: bool = False  # whether to detect humans and include their distance estimations in the output
 
     # depth estimation parameters
     depth_estimation_model: DepthEstimationModel = DepthEstimationModel.UniDepthv2  # one of DPT|DEPTH_ANYTHING
 
     # visualization parameters
-    make_figures: bool = True  # save figures in results directory
+    visualise_figures: bool = True  # save figures in results directory
 
     # calibration parameters
     # calibrate_metric: bool = False  # whether to calibrate in metric or in disparity space
-    calibration_regression_method: RegressionMethod = RegressionMethod.PieceWise  # one of RANSAC|LEASTSQUARES|POLY|RANSAC_POLY
+    calibration_regression_method: RegressionMethod = RegressionMethod.PIECEWISE  # one of RANSAC|LEASTSQUARES|POLY|RANSAC_POLY
     # calibration_mask_animals: bool = False  # whether to mask animals during calibration
-
 
     # sampling_parameters
     detection_sampling_method: DetectionSamplingMethod = DetectionSamplingMethod.BBOX_PERCENTILE  # one of BBOX_BOTTOM|BBOX_PERCENTILE|SAM
@@ -39,3 +40,4 @@ class Config:
 
     # extras
     detect_heights: bool = False
+    break_point: BreakPointsMethod = BreakPointsMethod.DECISIONTREE

@@ -18,7 +18,7 @@ from custom_types import RegressionMethod
 from sklearn.tree import DecisionTreeRegressor
 from scipy.signal import find_peaks
 
-dirs = PlatformDirs("DistanceEstimation", "timmh")
+dirs = PlatformDirs("DepthEstimation", "morphocam")
 random_seed = 42
 
 

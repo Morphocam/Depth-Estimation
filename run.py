@@ -183,13 +183,13 @@ def run(config: Config):
                     with open(os.path.join(config.data_dir, "results", f"calibration_points_{transect_id}.txt"),
                               "w") as f:
                         f.write(",".join([str(e) for e in x]) + "\n" + ",".join([str(e) for e in y]))
-                    import matplotlib.pyplot as plt
-                    plt.scatter(x, y)
-                    plt.plot([np.min(x), np.max(x)], [calibration(np.min(x)), calibration(np.max(x))])
-                    plt.xlabel(f"Inverse depth [1/m]")
-                    plt.ylabel(f"Sampled Disparity")
-                    plt.show()
-                    plt.close()
+                    # import matplotlib.pyplot as plt
+                    # plt.scatter(x, y)
+                    # plt.plot([np.min(x), np.max(x)], [calibration(np.min(x)), calibration(np.max(x))])
+                    # plt.xlabel(f"Inverse depth [1/m]")
+                    # plt.ylabel(f"Sampled Disparity")
+                    # plt.show()
+                    # plt.close()
 
                 except Exception as e:
                     calibration = None
@@ -315,6 +315,7 @@ def run(config: Config):
                             raise RuntimeError(
                                 f"Invalid configuration value '{config.sample_from}' for configuration sample_from")
                         depth = np.clip(disp, config.max_depth ** -1, config.min_depth ** -1) ** -1
+                        print(f"{depth,disp}")
 
                 yield
 
@@ -399,7 +400,7 @@ def run(config: Config):
                     world_positions = [np.mean(world_positions, axis=0)]
 
                 if config.make_figures:
-                    visualize_detection(config.data_dir,transect_id, detection_id, img, depth, farthest_calibration_frame_disp,
+                    visualize_detection(config.data_dir, transect_id, detection_id, img, depth, farthest_calibration_frame_disp,
                                         boxes, masks, world_positions, sample_locations, config.draw_detection_ids,
                                         config.draw_world_position, config.min_depth, config.max_depth)
 
