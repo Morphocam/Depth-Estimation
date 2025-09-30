@@ -34,6 +34,7 @@ class DepthEstimationModel(Enum):
     METRIC_3D_V2_VIT_S = auto()
     DPT_PYTORCH = auto()
     UniDepthv2 = auto()
+    MiDas = auto()
 
 class BreakPointsMethod(Enum):
     NONE = auto()
