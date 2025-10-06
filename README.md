@@ -9,9 +9,13 @@ Depth Estimation Pipeline for animal to camera distance estimation
 Setup and python environment before cloning the code (https://docs.python.org/3/library/venv.html)
 #### Download
 `git clone https://github.com/Morphocam/Depth-Estimation.git`
+
 `cd TG-Vid`
+
 `conda create --name morphocam python=3.10`
+
 `conda activate morphocam`
+
 `pip install -r requirement.txt`
 
 ### run the following cammand
