@@ -10,6 +10,14 @@ Setup and python environment before cloning the code (https://docs.python.org/3/
 #### Download
 `git clone https://github.com/Morphocam/Depth-Estimation.git`
 
+`cd Depth-Estimation`
+
+`conda create --name morphocam python=3.10`
+
+`conda activate morphocam`
+
+`pip install -r requirement.txt`
+
 ### run the following cammand
 `python main.py`
 
