@@ -16,7 +16,7 @@ Setup and python environment before cloning the code (https://docs.python.org/3/
 
 `conda activate morphocam`
 
-`pip install -r requirement.txt`
+`pip install -r requirements.txt`
 
 ### run the following cammand
 `python main.py`
