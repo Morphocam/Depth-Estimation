@@ -1,5 +1,5 @@
-from argparse import ArgumentParser
 import sys
+from argparse import ArgumentParser
 from collections import OrderedDict
 import json
 import logging
@@ -9,6 +9,20 @@ import os
 from copy import deepcopy
 import multiprocessing
 from tqdm import tqdm
+import certifi
+import ssl
+import urllib.request
+
+
+# Ensure urllib (and downstream HTTP libraries) trust the certifi CA bundle when running from a packaged app.
+_CERTIFI_CAFILE = certifi.where()
+os.environ.setdefault("SSL_CERT_FILE", _CERTIFI_CAFILE)
+os.environ.setdefault("REQUESTS_CA_BUNDLE", _CERTIFI_CAFILE)
+_ssl_context = ssl.create_default_context(cafile=_CERTIFI_CAFILE)
+urllib.request.install_opener(
+    urllib.request.build_opener(urllib.request.HTTPSHandler(context=_ssl_context))
+)
+
 import toga
 
 from config import Config
@@ -17,6 +31,37 @@ from utils import is_standalone, exception_to_str, EnumActionLowerCase, dirs
 
 def var_to_label(var: str):
     return " ".join(w[0].upper() + w[1:] for w in var.lower().split("_"))
+
+
+def _ensure_gtk_display_initialized():
+    if not sys.platform.startswith("linux"):
+        return
+
+    try:
+        import gi
+    except ImportError:
+        return
+
+    gtk_version = "4.0" if os.getenv("TOGA_GTK") == "4" else "3.0"
+    try:
+        gi.require_version("Gtk", gtk_version)
+        gi.require_version("Gdk", gtk_version)
+        from gi.repository import Gdk, Gtk
+    except (ImportError, ValueError):
+        return
+    try:
+        Gtk.init([])
+    except TypeError:
+        Gtk.init()
+
+    if gtk_version < "4.0":
+        default_display = Gdk.Screen.get_default()
+    else:
+        default_display = Gdk.Display.get_default()
+    if default_display is None:
+        raise RuntimeError(
+            "Cannot identify an active display. Is the `DISPLAY` environment variable set correctly?"
+        )
 
 
 def build_config_inputs(config, container, on_config_change):
@@ -28,20 +73,17 @@ def build_config_inputs(config, container, on_config_change):
         value_type = type(value)
 
         if value_type is float:
-            input = toga.NumberInput(default=value, step=Decimal("0.01"),
-                                     on_change=lambda input, var=var: on_config_change(var, float(input.value)))
+            input = toga.NumberInput(value=value, step=Decimal("0.01"), on_change=lambda input, var=var: on_config_change(var, float(input.value)))
+            input.style.width = 180
         elif value_type is int:
-            input = toga.NumberInput(default=value, step=1,
-                                     on_change=lambda input, var=var: on_config_change(var, int(input.value)))
+            input = toga.NumberInput(value=value, step=1, on_change=lambda input, var=var: on_config_change(var, int(input.value)))
+            input.style.width = 180
         elif value_type is bool:
-            input = toga.Switch("", is_on=value, on_toggle=lambda input, var=var: on_config_change(var, input.is_on))
+            input = toga.Switch("", value=value, on_change=lambda input, var=var: on_config_change(var, input.is_on))
         elif issubclass(value_type, Enum):
-            input = toga.Selection(items=[e for e in dir(type(value)) if not e.startswith("_")],
-                                   on_select=lambda input, var=var, default_type=value_type: on_config_change(var,
-                                                                                                              getattr(
-                                                                                                                  default_type,
-                                                                                                                  input.value)))
+            input = toga.Selection(items=[e for e in dir(type(value)) if not e.startswith("_")], on_change=lambda input, var=var, default_type=value_type: on_config_change(var, getattr(default_type, input.value)))
             input.value = value.name
+            input.style.width = 180
         else:
             continue
 
@@ -118,8 +160,8 @@ def build(app: toga.App):
     config_box.style.direction = "column"
 
     data_dir_box = toga.Box()
-    data_dir_box.style.margin = 15
-    data_dir_label = toga.TextInput(readonly=True, initial=config.data_dir)
+    data_dir_box.style.padding = 15
+    data_dir_label = toga.TextInput(readonly=True, value=config.data_dir)
     data_dir_label.style.flex = 1
     data_dir_label.style.padding_left = 15
 
@@ -127,8 +169,7 @@ def build(app: toga.App):
         data_dir = await app.main_window.select_folder_dialog(
             "Select Data Directory",
             # on_result=on_result,
-            initial_directory=os.path.realpath(config.data_dir) if os.path.isdir(
-                config.data_dir) and config.data_dir != "" else None,
+            initial_directory=os.path.realpath(config.data_dir) if os.path.isdir(config.data_dir) and config.data_dir != "" else None,
         )
         if data_dir is not None:
             data_dir_label.value = str(data_dir)
@@ -160,18 +201,16 @@ def build(app: toga.App):
 
     terminate_run = False
     last_status_update = None
-
     def run_wrapper(*args, **kwargs):
         from run import run
         nonlocal terminate_run, last_status_update
         try:
             yield sleep_duration
-            for status_update in run(*args, **kwargs):
+            for status_update in run(*args, **kwargs, gui=True):
                 if terminate_run:
                     break
                 if status_update is not None:
-                    progressbar.value = int(
-                        progressbar.max * status_update.current_transect_idx / status_update.total_transects)
+                    progressbar.value = int(progressbar.max * status_update.current_transect_idx / status_update.total_transects)
                     last_status_update = status_update
                 yield sleep_duration
             if not terminate_run:
@@ -227,7 +266,7 @@ def cli(args):
     last_total = None
     last_idx = 0
     with tqdm() as progressbar:
-        for status_update in run(config):
+        for status_update in run(config, gui=False):
             if status_update is not None:
                 if last_total != status_update.total_transects:
                     last_total = status_update.total_transects
@@ -239,13 +278,6 @@ def cli(args):
 
 
 def main():
-    try:
-        # Close the splash screen.
-        import pyi_splash
-        pyi_splash.close()
-    except ImportError:
-        # Otherwise do nothing.
-        pass
 
     argparser = ArgumentParser()
     argparser.add_argument("--cli", action="store_true", help="Enables CLI operation and disables GUI")
@@ -270,28 +302,38 @@ def main():
             level=logging.INFO,
             format="%(asctime)s [%(levelname)s] %(message)s",
             handlers=[
-                logging.StreamHandler()
+                logging.StreamHandler(sys.stdout)
             ]
         )
         cli(args)
     else:
-        # workaround for sys.stdout and sys.stderr being None on Windows without attached console. see
-        # https://pyinstaller.org/en/v6.10.0/common-issues-and-pitfalls.html#sys-stdin-sys-stdout-and-sys-stderr-in
-        # -noconsole-windowed-applications-windows-only
+        # We are in GUI mode. If on Windows, hide the console window that opened.
+        if sys.platform == "win32":
+            import ctypes
+            # SW_HIDE = 0
+            ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+
+        # workaround for sys.stdout and sys.stderr being None on Windows without attached console.
+        # see https://pyinstaller.org/en/v6.10.0/common-issues-and-pitfalls.html#sys-stdin-sys-stdout-and-sys-stderr-in-noconsole-windowed-applications-windows-only
         if sys.stdout is None:
             sys.stdout = open(os.devnull, "w")
         if sys.stderr is None:
             sys.stderr = open(os.devnull, "w")
 
+        _ensure_gtk_display_initialized()
 
+        if is_standalone():
+            icon = os.path.join(sys._MEIPASS, "assets", "icon.png")
+        else:
+            icon = os.path.join("assets", "icon.png")
         toga.App(
-             "Morphocam Depth Estimation",
-             "morphocam.depth_estimation",
-             icon=None,
-             home_page="",
-             description="An application for estimating animals depth in camera traps",
-             author="morphocam",
-             startup=build,
+            "Distance Estimation",
+            "xyz.haucke.distance_estimation",
+            icon=icon,
+            home_page="https://timm.haucke.xyz/publications/distance-estimation-animal-abundance",
+            description="An application for estimating distances to animals in camera trap footage",
+            author="Timm Haucke",
+            startup=build,
         ).main_loop()
 
 

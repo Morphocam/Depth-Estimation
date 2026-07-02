@@ -19,8 +19,8 @@ class DepthAnything(DownloadableWeights):
         self._model_loaded = True
 
         weights_url = "https://github.com/timmh/Depth-Anything/releases/download/onnx_v0.1/depth_anything_metric_depth_outdoor.onnx"
-        weights_md5 = "cfca784a388778074c6d88cb6f687961"
-        weights_path = self.get_weights(weights_url, weights_md5)
+        wegiths_md5 = "cfca784a388778074c6d88cb6f687961"
+        weights_path = self.get_weights(weights_url, wegiths_md5)
 
         providers = get_onnxruntime_providers()
         try:
@@ -43,10 +43,38 @@ class DepthAnything(DownloadableWeights):
         self.mean = np.array(normalization["mean"])
         self.std = np.array(normalization["std"])
     
-    def __call__(self, img):
+    def __call__(self, imgs):
         # ensure model is loaded
         self._load_model()
 
+        if not isinstance(imgs, list):
+            imgs = [imgs]
+            was_list = False
+        else:
+            was_list = True
+
+        predictions = []
+        for img in imgs:
+            original_shape = img.shape
+            preprocessed_img = self.preprocess(img)
+
+            # add batch dimension
+            img_input = preprocessed_img[None, ...]
+
+            # compute
+            prediction = self.session.run(["output"], {"input": img_input.astype(np.float32)})[0][0][0]
+
+            # post-process
+            resized_prediction = cv2.resize(prediction, (original_shape[1], original_shape[0]), cv2.INTER_CUBIC)
+            resized_prediction *= self.prediction_factor
+            predictions.append(resized_prediction)
+
+        if not was_list:
+            return predictions[0]
+        else:
+            return predictions
+
+    def preprocess(self, img):
         # BGR to RGB
         img = img[..., ::-1]
 
@@ -62,12 +90,4 @@ class DepthAnything(DownloadableWeights):
         # transpose from HWC to CHW
         img_input = img_input.transpose(2, 0, 1)
 
-        # add batch dimension
-        img_input = img_input[None, ...]
-
-        # compute
-        prediction = self.session.run(["output"], {"input": img_input.astype(np.float32)})[0][0][0]
-        prediction = cv2.resize(prediction, (img.shape[1], img.shape[0]), cv2.INTER_CUBIC)
-        prediction *= self.prediction_factor
-
-        return prediction
+        return img_input

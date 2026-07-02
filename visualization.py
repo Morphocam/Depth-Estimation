@@ -5,6 +5,7 @@ import atexit
 import numpy as np
 import cv2
 
+
 process_queue_max_len = min(8, os.cpu_count())
 process_queue = Queue(process_queue_max_len)
 
@@ -16,7 +17,6 @@ def exit_handler():
             process.join()
         except Empty:
             pass
-
 
 atexit.register(exit_handler)
 
@@ -43,8 +43,7 @@ def visualize_detection(*args, **kwargs):
     process_queue.put(process)
 
 
-def visualize_farthest_calibration_frame_impl(data_dir, transect_id, farthest_calibration_frame_disp, min_depth,
-                                              max_depth):
+def visualize_farthest_calibration_frame_impl(data_dir, transect_id, farthest_calibration_frame_disp, min_depth, max_depth):
     import matplotlib
     import matplotlib.pyplot as plt
     matplotlib.use("pdf")  # required for PyInstaller detection
@@ -58,7 +57,7 @@ def visualize_farthest_calibration_frame_impl(data_dir, transect_id, farthest_ca
         cmap="turbo",
     )
     plt.colorbar()
-    plt.title("Calibration Frame Depth")
+    plt.title("Final Calibration Frame Depth")
     os.makedirs(os.path.join(data_dir, "results", "calibration"), exist_ok=True)
     plt.savefig(
         os.path.join(data_dir, "results", "calibration", f"{transect_id}_calibration.pdf"),
@@ -68,9 +67,7 @@ def visualize_farthest_calibration_frame_impl(data_dir, transect_id, farthest_ca
     )
 
 
-def visualize_detection_impl(data_dir, transect_id, detection_id, detection_frame, calibrated_depth_midas,
-                             farthest_calibration_frame_disp, boxes, masks, world_positions, sample_locations,
-                             draw_detection_ids, draw_world_position, min_depth, max_depth):
+def visualize_detection_impl(data_dir, detection_id, detection_frame, calibrated_depth_midas, farthest_calibration_frame_disp, boxes, masks, world_positions, sample_locations, draw_detection_ids, draw_world_position, min_depth, max_depth):
     import matplotlib
     import matplotlib.pyplot as plt
     import matplotlib.patches
@@ -84,9 +81,9 @@ def visualize_detection_impl(data_dir, transect_id, detection_id, detection_fram
         fig, (ax1, ax2) = plt.subplots(
             1, 2, figsize=(scale * 6.202, scale * 1.5)
         )
-
+    
     ax1.imshow(detection_frame[..., ::-1])
-    ax1.set_title("Camera Trap")
+    ax1.set_title("Observation")
     for i, (box, mask, world_pos) in enumerate(zip(boxes, masks, world_positions)):
         if mask is not None:
             mask_rgb = np.zeros((*detection_frame.shape[0:2], 4))
@@ -111,9 +108,8 @@ def visualize_detection_impl(data_dir, transect_id, detection_id, detection_fram
         ax1.annotate(label, (rx, ry - 5), color="red", fontsize=6)
     ax1.get_xaxis().set_visible(False)
     ax1.get_yaxis().set_visible(False)
-
     im = ax2.imshow(calibrated_depth_midas, vmin=min_depth, vmax=max_depth, cmap="turbo")
-    ax2.set_title("Depth Map")
+    ax2.set_title("Depth")
     ax2.get_xaxis().set_visible(False)
     ax2.get_yaxis().set_visible(False)
     sample_locations = np.array(sample_locations)
@@ -137,7 +133,7 @@ def visualize_detection_impl(data_dir, transect_id, detection_id, detection_fram
             vmax=max_depth,
             cmap="turbo",
         )
-        ax3.set_title("Reference Depth Map")
+        ax3.set_title("Reference Depth")
         ax3.get_xaxis().set_visible(False)
         ax3.get_yaxis().set_visible(False)
 
@@ -151,7 +147,7 @@ def visualize_detection_impl(data_dir, transect_id, detection_id, detection_fram
 
     os.makedirs(os.path.join(data_dir, "results", "sampling"), exist_ok=True)
     plt.savefig(
-        os.path.join(data_dir, "results", "sampling", transect_id + '_' + detection_id + ".pdf"),
+        os.path.join(data_dir, "results", "sampling", detection_id + ".pdf"),
         bbox_inches="tight",
         dpi=300,
         transparent=True,

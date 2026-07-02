@@ -42,42 +42,56 @@ class SAM(DownloadableWeights):
         self.pixel_mean = np.array([123.675, 116.28, 103.53])
         self.pixel_std = np.array([58.395, 57.12, 57.375])
 
-    def __call__(self, img, boxes):
+    def __call__(self, imgs, list_of_boxes):
         # ensure model is loaded
         self._load_model()
 
-        img = img[..., ::-1]
-        original_size = img.shape[0:2]
-        img = cv2.copyMakeBorder(img, 0, max(0, img.shape[1] - img.shape[0]), 0, max(0, img.shape[0] - img.shape[1]), cv2.BORDER_CONSTANT)
-        fx, fy = self.image_size[1] / img.shape[1], self.image_size[0] / img.shape[0]
-        img = cv2.resize(img, (self.image_size[1], self.image_size[0]), interpolation=cv2.INTER_LINEAR)
+        if not isinstance(imgs, list):
+            imgs = [imgs]
+            list_of_boxes = [list_of_boxes]
+            was_list = False
+        else:
+            was_list = True
 
-        img = (img - self.pixel_mean[None, None, :]) / self.pixel_std[None, None, :]
-        img = img[None, ...]
-        img = img.transpose(0, 3, 1, 2)
-        img = img.astype(np.float32)
+        results = []
+        for img, boxes in zip(imgs, list_of_boxes):
+            img = img[..., ::-1]
+            original_size = img.shape[0:2]
+            img = cv2.copyMakeBorder(img, 0, max(0, img.shape[1] - img.shape[0]), 0, max(0, img.shape[0] - img.shape[1]), cv2.BORDER_CONSTANT)
+            fx, fy = self.image_size[1] / img.shape[1], self.image_size[0] / img.shape[0]
+            img = cv2.resize(img, (self.image_size[1], self.image_size[0]), interpolation=cv2.INTER_LINEAR)
 
-        image_embedding = self.encoder_session.run(None, {"x": img})[0]
+            img = (img - self.pixel_mean[None, None, :]) / self.pixel_std[None, None, :]
+            img = img[None, ...]
+            img = img.transpose(0, 3, 1, 2)
+            img = img.astype(np.float32)
 
-        mask_list = []
-        for box in boxes:
-            onnx_box_coords = box.reshape(-1, 2, 2)
-            onnx_box_labels = np.array([2,3])
-            onnx_coord = onnx_box_coords.astype(np.float32)
-            onnx_label = onnx_box_labels[None, :].astype(np.float32)
-            onnx_coord[..., 0] *= fy
-            onnx_coord[..., 1] *= fx
+            image_embedding = self.encoder_session.run(None, {"x": img})[0]
 
-            masks, _, _ = self.decoder_session.run(None, {
-                "image_embeddings": image_embedding,
-                "point_coords": onnx_coord.astype(np.float32),
-                "point_labels": onnx_label.astype(np.float32),
-                "mask_input": np.zeros((1, 1, 256, 256), dtype=np.float32),
-                "has_mask_input": np.array([0], dtype=np.float32),
-                "orig_im_size": np.array(original_size, dtype=np.float32)
-            })
-            masks = masks > 0.0
-            mask = masks[0, 0]
-            mask_list += [mask]
+            mask_list = []
+            for box in boxes:
+                onnx_box_coords = box.reshape(-1, 2, 2)
+                onnx_box_labels = np.array([2,3])
+                onnx_coord = onnx_box_coords.astype(np.float32)
+                onnx_label = onnx_box_labels[None, :].astype(np.float32)
+                onnx_coord[..., 0] *= fy
+                onnx_coord[..., 1] *= fx
 
-        return np.array(mask_list)
+                masks, _, _ = self.decoder_session.run(None, {
+                    "image_embeddings": image_embedding,
+                    "point_coords": onnx_coord.astype(np.float32),
+                    "point_labels": onnx_label.astype(np.float32),
+                    "mask_input": np.zeros((1, 1, 256, 256), dtype=np.float32),
+                    "has_mask_input": np.array([0], dtype=np.float32),
+                    "orig_im_size": np.array(original_size, dtype=np.float32)
+                })
+                masks = masks > 0.0
+                mask = masks[0, 0]
+                mask_list += [mask]
+            
+            results.append(np.array(mask_list))
+
+        if not was_list:
+            return results[0]
+        else:
+            return results

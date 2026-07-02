@@ -15,10 +15,9 @@ from sklearn import linear_model
 import scipy.ndimage as ndimage
 from platformdirs import PlatformDirs
 from custom_types import RegressionMethod
-from sklearn.tree import DecisionTreeRegressor
-from scipy.signal import find_peaks
 
-dirs = PlatformDirs("DepthEstimation", "morphocam")
+
+dirs = PlatformDirs("DistanceEstimation", "timmh")
 random_seed = 42
 
 
@@ -96,16 +95,14 @@ def get_calibration_frame_dist(transect_dir, calibration_frame_id):
     ]:
         if os.path.exists(depth_file_path):
             return depth_from_file(depth_file_path)
-    raise RuntimeError(
-        f"Unable to find depth file for transect {transect_dir} and calibration frame id {calibration_frame_id}")
+    raise RuntimeError(f"Unable to find depth file for transect {transect_dir} and calibration frame id {calibration_frame_id}")
 
 
 def calibrate(x, y, method, n=2, poly_deg=5):
     with random_seed_manager():
 
         assert n in [1, 2]
-        assert len(x) >= 2 and len(y) >= 2 and len(x) == len(
-            y), f"inconsistent sample length in calibration: len(x)={len(x)}, len(y)={len(y)}"
+        assert len(x) >= 2 and len(y) >= 2 and len(x) == len(y), f"inconsistent sample length in calibration: len(x)={len(x)}, len(y)={len(y)}"
 
         x_mask = x.mask if hasattr(x, "mask") else np.zeros_like(x, dtype=bool)
         y_mask = y.mask if hasattr(y, "mask") else np.zeros_like(y, dtype=bool)
@@ -120,10 +117,8 @@ def calibrate(x, y, method, n=2, poly_deg=5):
         if method == RegressionMethod.RANSAC:
             def is_model_valid(model, X_, y_):
                 return (model.coef_ > 0).all()
-
             estimator = linear_model.LinearRegression(positive=True)
-            ransac = linear_model.RANSACRegressor(estimator=estimator, is_model_valid=is_model_valid,
-                                                  random_state=random_seed)
+            ransac = linear_model.RANSACRegressor(estimator=estimator, is_model_valid=is_model_valid, random_state=random_seed)
             ransac.fit(np.array(x).reshape(-1, 1), np.array(y).reshape(-1, 1))
             c = ransac.predict(np.array([0]).reshape(-1, 1)) if n == 2 else 0
             m = ransac.predict(np.array([1]).reshape(-1, 1)) - c
@@ -153,40 +148,16 @@ def calibrate(x, y, method, n=2, poly_deg=5):
             p = np.poly1d(z)
             return p
 
-        if method == RegressionMethod.QUADRATIC:
-            z, _ = np.polynomial.polynomial.polyfit(x, y, 2, full=True)
-            p = np.poly1d(z)
-            return p
-
-        if method == RegressionMethod.PieceWise:
-            x, y = np.array(x), np.array(y)
-
-            # Use a decision tree to find segment boundaries
-            tree = DecisionTreeRegressor(max_leaf_nodes=2)
-            tree.fit(x.reshape(-1, 1), y)
-            thresholds = np.sort(np.unique(tree.tree_.threshold[tree.tree_.threshold > 0]))
-
-            segments = np.split(x, np.searchsorted(x, thresholds))
-            y_segments = np.split(y, np.searchsorted(x, thresholds))
-
-            models = []
-            for x_seg, y_seg in zip(segments, y_segments):
-                if len(x_seg) > 1:
-                    ransac = linear_model.RANSACRegressor()
-                    ransac.fit(x_seg.reshape(-1, 1), y_seg.reshape(-1, 1))
-                    c = ransac.predict(np.array([[0]])) if len(x_seg) == 2 else 0
-                    m = ransac.predict(np.array([[1]])) - c
-                    models.append((m.item(), c.item(), (x_seg.min(), x_seg.max())))
-
-            def predict(data):
-                data = np.array(data)
-                predictions = np.zeros_like(data, dtype=float)
-                for m, c, (x_min, x_max) in models:
-                    mask = (data >= x_min) & (data <= x_max)
-                    predictions[mask] = m * data[mask] + c
-                return predictions
-
-            return predict
+        if method == RegressionMethod.PIECEWISE_LINEAR:
+            try:
+                import pwlf
+                my_pwlf = pwlf.PiecewiseLinFit(x, y)
+                # Fit 2 segments (1 breakpoint)
+                my_pwlf.fit(2)
+                return lambda data: my_pwlf.predict(np.asarray(data))
+            except Exception as e:
+                print(f"Failed PIECEWISE_LINEAR calibration: {e}. Retrying with RANSAC.")
+                return calibrate(x, y, method=RegressionMethod.RANSAC, n=n)
 
         if method == RegressionMethod.RANSAC_POLY:
             # adapted from https://gist.github.com/geohot/9743ad59598daf61155bf0d43a10838c
@@ -221,6 +192,67 @@ def calibrate(x, y, method, n=2, poly_deg=5):
             return p
 
 
+def piecewise_linear_calibration(x, y, eps=1e-6):
+    """
+    Create a monotonic piecewise-linear calibration function y = f(x).
+
+    - Interpolates linearly between calibration points.
+    - Extrapolates linearly using the first/last segment.
+    - Clips outputs to be >= eps (avoids negative/zero inverse depths).
+    """
+    x = np.asarray(x, dtype=np.float64).reshape(-1)
+    y = np.asarray(y, dtype=np.float64).reshape(-1)
+    if len(x) == 0 or len(y) == 0 or len(x) != len(y):
+        raise ValueError(f"Invalid calibration points: len(x)={len(x)} len(y)={len(y)}")
+
+    if len(x) == 1:
+        y0 = float(y[0])
+
+        def f(data):
+            data = np.asarray(data, dtype=np.float64)
+            return np.full_like(data, max(eps, y0), dtype=np.float64)
+
+        return f
+
+    sort_idx = np.argsort(x)
+    x_sorted = x[sort_idx]
+    y_sorted = y[sort_idx]
+
+    # Merge duplicate x values by averaging y (rare, but avoids division by zero in slopes).
+    unique_x, inverse = np.unique(x_sorted, return_inverse=True)
+    if len(unique_x) != len(x_sorted):
+        summed_y = np.zeros(len(unique_x), dtype=np.float64)
+        counts = np.zeros(len(unique_x), dtype=np.int64)
+        for i, group in enumerate(inverse):
+            summed_y[group] += y_sorted[i]
+            counts[group] += 1
+        x_sorted = unique_x
+        y_sorted = summed_y / np.maximum(counts, 1)
+
+    if len(x_sorted) == 1:
+        y0 = float(y_sorted[0])
+
+        def f(data):
+            data = np.asarray(data, dtype=np.float64)
+            return np.full_like(data, max(eps, y0), dtype=np.float64)
+
+        return f
+
+    left_dx = float(x_sorted[1] - x_sorted[0])
+    right_dx = float(x_sorted[-1] - x_sorted[-2])
+    left_slope = float((y_sorted[1] - y_sorted[0]) / left_dx) if left_dx != 0 else 0.0
+    right_slope = float((y_sorted[-1] - y_sorted[-2]) / right_dx) if right_dx != 0 else 0.0
+
+    def f(data):
+        data = np.asarray(data, dtype=np.float64)
+        out = np.interp(data, x_sorted, y_sorted)
+        out = np.where(data < x_sorted[0], y_sorted[0] + (data - x_sorted[0]) * left_slope, out)
+        out = np.where(data > x_sorted[-1], y_sorted[-1] + (data - x_sorted[-1]) * right_slope, out)
+        return np.clip(out, eps, np.inf)
+
+    return f
+
+
 def calibrate_v0(x, y, method, n=2, poly_deg=5):
     with random_seed_manager():
 
@@ -253,6 +285,7 @@ def calibrate_v0(x, y, method, n=2, poly_deg=5):
                 m, c = m.item(), c.item()
                 return lambda data: m * data + c
 
+
         if method == RegressionMethod.LEASTSQUARES:
             try:
                 if n == 2:
@@ -269,46 +302,23 @@ def calibrate_v0(x, y, method, n=2, poly_deg=5):
                     m, c = m.item(), c.item()
                     return lambda data: m * data + c
             except np.linalg.LinAlgError:
-                return calibrate(x, y, method="RANSAC", n=n)
+                return do_calibrate(x, y, method="RANSAC", n=n)
 
         if method == RegressionMethod.POLY:
             z, _ = np.polynomial.polynomial.polyfit(x, y, poly_deg, full=True)
             p = np.poly1d(z)
             return p
 
-        if method == RegressionMethod.QUADRATIC:
-            z, _ = np.polynomial.polynomial.polyfit(x, y, 2, full=True)
-            p = np.poly1d(z)
-            return p
-
-        if method == RegressionMethod.PieceWise:
-            x, y = np.array(x), np.array(y)
-
-            # Use a decision tree to find segment boundaries
-            tree = DecisionTreeRegressor(max_leaf_nodes=2)
-            tree.fit(x.reshape(-1, 1), y)
-            thresholds = np.sort(np.unique(tree.tree_.threshold[tree.tree_.threshold > 0]))
-
-            segments = np.split(x, np.searchsorted(x, thresholds))
-            y_segments = np.split(y, np.searchsorted(x, thresholds))
-
-            models = []
-            for x_seg, y_seg in zip(segments, y_segments):
-                if len(x_seg) > 1:
-                    ransac = linear_model.RANSACRegressor()
-                    ransac.fit(x_seg.reshape(-1, 1), y_seg.reshape(-1, 1))
-                    c = ransac.predict(np.array([[0]])) if len(x_seg) == 2 else 0
-                    m = ransac.predict(np.array([[1]])) - c
-                    models.append((m.item(), c.item(), (x_seg.min(), x_seg.max())))
-
-            def predict(data):
-                data = np.array(data)
-                predictions = np.zeros_like(data, dtype=float)
-                for m, c, (x_min, x_max) in models:
-                    mask = (data >= x_min) & (data <= x_max)
-                    predictions[mask] = m * data[mask] + c
-                return predictions
-            return predict
+        if method == RegressionMethod.PIECEWISE_LINEAR:
+            try:
+                import pwlf
+                my_pwlf = pwlf.PiecewiseLinFit(x, y)
+                # Fit 2 segments (1 breakpoint)
+                my_pwlf.fit(2)
+                return lambda data: my_pwlf.predict(np.asarray(data))
+            except Exception as e:
+                print(f"Failed PIECEWISE_LINEAR calibration: {e}. Retrying with RANSAC.")
+                return calibrate(x, y, method=RegressionMethod.RANSAC, n=n)
 
         if method == RegressionMethod.RANSAC_POLY:
             # adapted from https://gist.github.com/geohot/9743ad59598daf61155bf0d43a10838c
@@ -445,12 +455,12 @@ class DownloadableWeights:
                 assert md5sum is None or md5sum_from_filepath(filepath) == md5sum
                 return filepath
         except Exception as e:
-            os.unlink(filepath)
+            if os.path.exists(filepath):
+                os.unlink(filepath)
             raise RuntimeError(f"Failed retrieving weight '{filename}'. Please try again. Full exception: {e}")
-            raise e
 
 
-def blur_and_downsample(img, calibration_downsampling_factor=1 / 8, calibration_blur_sigma=41):
+def blur_and_downsample(img, calibration_downsampling_factor=1/8, calibration_blur_sigma=41):
     mask = img.mask if (hasattr(img, "mask") and img.mask.shape != ()) else None
     img = img if mask is None else img.data
 
@@ -485,3 +495,10 @@ def condition_disparity(disp, eps=1e-6):
     disp = disp / np.std(disp)
     disp = np.clip(disp, eps, np.inf)
     return disp
+
+
+def imread(path, *args, **kwargs):
+    img = cv2.imread(path, *args, **kwargs)
+    if img is None:
+        raise RuntimeError(f"Failed to read image from path '{path}'")
+    return img

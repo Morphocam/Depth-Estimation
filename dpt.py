@@ -1,3 +1,4 @@
+
 import sys
 import os
 import json
@@ -29,8 +30,7 @@ class DPT(DownloadableWeights):
             )
         except Exception as e:
             providers_str = ",".join(providers)
-            logging.warn(
-                f"Failed to create onnxruntime inference session with providers '{providers_str}', trying 'CPUExecutionProvider'")
+            logging.warn(f"Failed to create onnxruntime inference session with providers '{providers_str}', trying 'CPUExecutionProvider'")
             self.session = onnxruntime.InferenceSession(
                 weights_path,
                 providers=["CPUExecutionProvider"],
@@ -42,11 +42,39 @@ class DPT(DownloadableWeights):
         self.prediction_factor = float(metadata["PredictionFactor"])
         self.mean = np.array(normalization["mean"])
         self.std = np.array(normalization["std"])
-
-    def __call__(self, img):
+    
+    def __call__(self, imgs):
         # ensure model is loaded
         self._load_model()
 
+        if not isinstance(imgs, list):
+            imgs = [imgs]
+            was_list = False
+        else:
+            was_list = True
+
+        predictions = []
+        for img in imgs:
+            original_shape = img.shape
+            preprocessed_img = self.preprocess(img)
+            
+            # add batch dimension
+            img_input = preprocessed_img[None, ...]
+
+            # compute
+            prediction = self.session.run(["output"], {"input": img_input.astype(np.float32)})[0][0]
+            
+            # post-process
+            resized_prediction = cv2.resize(prediction, (original_shape[1], original_shape[0]), cv2.INTER_CUBIC)
+            resized_prediction *= self.prediction_factor
+            predictions.append(resized_prediction)
+
+        if not was_list:
+            return predictions[0]
+        else:
+            return predictions
+
+    def preprocess(self, img):
         # BGR to RGB
         img = img[..., ::-1]
 
@@ -62,12 +90,4 @@ class DPT(DownloadableWeights):
         # transpose from HWC to CHW
         img_input = img_input.transpose(2, 0, 1)
 
-        # add batch dimension
-        img_input = img_input[None, ...]
-
-        # compute
-        prediction = self.session.run(["output"], {"input": img_input.astype(np.float32)})[0][0]
-        prediction = cv2.resize(prediction, (img.shape[1], img.shape[0]), cv2.INTER_CUBIC)
-        prediction *= self.prediction_factor
-
-        return prediction
+        return img_input

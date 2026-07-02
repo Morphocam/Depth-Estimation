@@ -20,24 +20,22 @@ class MultipleAnimalReduction(Enum):
 
 class RegressionMethod(Enum):
     RANSAC = auto()
-    PIECEWISE = auto()
+    LEASTSQUARES = auto()
     POLY = auto()
     RANSAC_POLY = auto()
-    QUADRATIC = auto()
-    LEASTSQUARES = auto()
+    PIECEWISE_LINEAR = auto()
 
 
 class DepthEstimationModel(Enum):
     DPT = auto()
     DEPTH_AHYTHING_METRIC = auto()
-    DepthPro = auto()
     METRIC_3D_V2_VIT_S = auto()
     DPT_PYTORCH = auto()
-    UniDepthv2 = auto()
-    MiDas = auto()
+    MONODEPTH2 = auto()
+    DEPTH_PRO = auto()
 
-class BreakPointsMethod(Enum):
-    NONE = auto()
-    DECISIONTREE = auto()
-    CHANGEPOINT = auto()
-    GRIDSEARCH = auto()
+
+class DetectionModel(Enum):
+    MEGADETECTOR_V5A = auto()
+    MEGADETECTOR_V5B = auto()
+    MEGADETECTOR_V6 = auto()
