@@ -30,6 +30,7 @@ class Config:
     detection_model: DetectionModel = DetectionModel.MEGADETECTOR_V5A  # one of MEGADETECTOR_V5A|MEGADETECTOR_V5B
     bbox_confidence_threshold: float = 0.2  # minimal confidence of detections
     detect_humans: bool = False  # whether to detect humans and include their distance estimations in the output
+    box_data_csv: str = ""  # if set, path to a CSV of precomputed detections (e.g. from TrapTagger) to use instead of running the detection model
 
     # depth estimation parameters
     depth_estimation_model: DepthEstimationModel = DepthEstimationModel.DPT  # one of DPT|DEPTH_ANYTHING

@@ -63,7 +63,7 @@ def get_translation_matrix(translation_vector):
 
 def rot_from_axisangle(vec):
     """Convert an axisangle rotation into a 4x4 transformation matrix
-    (adapted from https://github.com/Wallacoloo/printipi)
+    (adapted from a public axis-angle to rotation-matrix implementation)
     Input 'vec' has to be Bx1x3
     """
     angle = torch.norm(vec, 2, 2, True)

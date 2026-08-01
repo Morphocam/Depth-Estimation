@@ -1,4 +1,5 @@
 import sys
+import asyncio
 from argparse import ArgumentParser
 from collections import OrderedDict
 import json
@@ -67,7 +68,7 @@ def _ensure_gtk_display_initialized():
 def build_config_inputs(config, container, on_config_change):
     inputs = []
     for var in dir(config):
-        if var.startswith("_") or var == "data_dir":
+        if var.startswith("_") or var in ("data_dir", "box_data_csv"):
             continue
         value = getattr(config, var)
         value_type = type(value)
@@ -96,10 +97,10 @@ def build_config_inputs(config, container, on_config_change):
         input_box = toga.Box()
         input_box.add(input)
         input_box.style.flex = 0
-        input_box.style.padding_left = input_box.style.padding_right = 75
+        input_box.style.margin_left = input_box.style.margin_right = 75
         box.add(input_box)
-        box.style.padding_left = box.style.padding_right = 15
-        box.style.padding_top = box.style.padding_bottom = 2
+        box.style.margin_left = box.style.margin_right = 15
+        box.style.margin_top = box.style.margin_bottom = 2
         box.style.flex = 1
         container.add(box)
     return inputs
@@ -160,17 +161,16 @@ def build(app: toga.App):
     config_box.style.direction = "column"
 
     data_dir_box = toga.Box()
-    data_dir_box.style.padding = 15
+    data_dir_box.style.margin = 15
     data_dir_label = toga.TextInput(readonly=True, value=config.data_dir)
     data_dir_label.style.flex = 1
-    data_dir_label.style.padding_left = 15
+    data_dir_label.style.margin_left = 15
 
     async def update_data_dir(_):
-        data_dir = await app.main_window.select_folder_dialog(
+        data_dir = await app.main_window.dialog(toga.SelectFolderDialog(
             "Select Data Directory",
-            # on_result=on_result,
             initial_directory=os.path.realpath(config.data_dir) if os.path.isdir(config.data_dir) and config.data_dir != "" else None,
-        )
+        ))
         if data_dir is not None:
             data_dir_label.value = str(data_dir)
             config.data_dir = str(data_dir)
@@ -181,6 +181,35 @@ def build(app: toga.App):
     data_dir_box.add(data_dir_label)
     config_box.add(data_dir_box)
 
+    box_data_csv_box = toga.Box()
+    box_data_csv_box.style.margin = 15
+    box_data_csv_label = toga.TextInput(readonly=True, value=config.box_data_csv)
+    box_data_csv_label.style.flex = 1
+    box_data_csv_label.style.margin_left = 15
+
+    async def update_box_data_csv(_):
+        box_data_csv = await app.main_window.dialog(toga.OpenFileDialog(
+            "Select Box Data CSV (optional, leave unset to use MegaDetector)",
+            initial_directory=os.path.dirname(os.path.realpath(config.box_data_csv)) if config.box_data_csv != "" and os.path.isfile(config.box_data_csv) else None,
+            file_types=["csv"],
+        ))
+        if box_data_csv is not None:
+            box_data_csv_label.value = str(box_data_csv)
+            config.box_data_csv = str(box_data_csv)
+            persist_config(config, config_path)
+
+    def clear_box_data_csv(_):
+        box_data_csv_label.value = ""
+        config.box_data_csv = ""
+        persist_config(config, config_path)
+
+    update_box_data_csv_button = toga.Button("Select Box Data CSV", on_press=update_box_data_csv)
+    clear_box_data_csv_button = toga.Button("Clear", on_press=clear_box_data_csv)
+    box_data_csv_box.add(update_box_data_csv_button)
+    box_data_csv_box.add(clear_box_data_csv_button)
+    box_data_csv_box.add(box_data_csv_label)
+    config_box.add(box_data_csv_box)
+
     def enable_inputs(inputs, enable):
         for input in inputs:
             input.enabled = enable
@@ -189,7 +218,10 @@ def build(app: toga.App):
         setattr(config, var, value)
         persist_config(config, config_path)
 
-    inputs = build_config_inputs(config, config_box, on_config_change) + [update_data_dir_button, data_dir_label]
+    inputs = build_config_inputs(config, config_box, on_config_change) + [
+        update_data_dir_button, data_dir_label,
+        update_box_data_csv_button, clear_box_data_csv_button, box_data_csv_label,
+    ]
 
     config_box.style.flex = 1
     config_box_container = toga.ScrollContainer(content=config_box)
@@ -197,22 +229,22 @@ def build(app: toga.App):
     main_box.add(config_box_container)
 
     status_box = toga.Box()
-    status_box.style.padding = 15
+    status_box.style.margin = 15
 
     terminate_run = False
     last_status_update = None
-    def run_wrapper(*args, **kwargs):
+    async def run_wrapper(*args, **kwargs):
         from run import run
         nonlocal terminate_run, last_status_update
         try:
-            yield sleep_duration
+            await asyncio.sleep(sleep_duration)
             for status_update in run(*args, **kwargs, gui=True):
                 if terminate_run:
                     break
                 if status_update is not None:
                     progressbar.value = int(progressbar.max * status_update.current_transect_idx / status_update.total_transects)
                     last_status_update = status_update
-                yield sleep_duration
+                await asyncio.sleep(sleep_duration)
             if not terminate_run:
                 progressbar.value = progressbar.max
         except Exception as e:
@@ -222,7 +254,7 @@ def build(app: toga.App):
             if last_status_update is not None:
                 status_str += f" at transect '{last_status_update.current_transect_id}'"
                 status_str += f" and detection '{last_status_update.current_detection_id}'" if last_status_update.current_detection_id is not None else ""
-            app.main_window.info_dialog("Error", f"An error occured{status_str}: {str(e)}\nDetails:\n{exception_str}")
+            await app.main_window.dialog(toga.InfoDialog("Error", f"An error occured{status_str}: {str(e)}\nDetails:\n{exception_str}"))
         finally:
             run_button.text = "Start"
             enable_inputs(inputs, True)
@@ -234,7 +266,7 @@ def build(app: toga.App):
         if run_button.text == "Start":
             run_button.text = "Stop"
             enable_inputs(inputs, False)
-            app.add_background_task(lambda _: run_wrapper(deepcopy(config)))
+            asyncio.create_task(run_wrapper(deepcopy(config)))
         elif run_button.text == "Stop":
             terminate_run = True
             run_button.text = "Start"
@@ -245,10 +277,10 @@ def build(app: toga.App):
     progressbar_box = toga.Box()
     progressbar_box.style.flex = 1
     progressbar_box.style.direction = "row"
-    progressbar_box.style.alignment = "center"
+    progressbar_box.style.align_items = "center"
     progressbar = toga.ProgressBar(max=int(1e6))
     progressbar.style.flex = 1
-    progressbar.style.padding_left = 15
+    progressbar.style.margin_left = 15
     progressbar_box.add(progressbar)
 
     status_box.add(run_button)
@@ -327,8 +359,8 @@ def main():
         else:
             icon = os.path.join("assets", "icon.png")
         toga.App(
-            "Distance Estimation",
-            "xyz.haucke.distance_estimation",
+            "Depth Estimation v2",
+            "xyz.haucke.depth_estimation_v2",
             icon=icon,
             home_page="https://timm.haucke.xyz/publications/distance-estimation-animal-abundance",
             description="An application for estimating distances to animals in camera trap footage",

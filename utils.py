@@ -7,6 +7,8 @@ import argparse
 import enum
 import urllib.request
 import re
+import csv
+from collections import defaultdict
 from contextlib import contextmanager
 import hashlib
 import cv2
@@ -17,7 +19,7 @@ from platformdirs import PlatformDirs
 from custom_types import RegressionMethod
 
 
-dirs = PlatformDirs("DistanceEstimation", "timmh")
+dirs = PlatformDirs("DepthEstimationV2", "timmh")
 random_seed = 42
 
 
@@ -44,6 +46,38 @@ def get_extension_agnostic_path(base, extensions):
     for extension in extensions:
         if os.path.exists(base + extension):
             return base + extension
+
+
+def parse_site_and_image_id(image_path):
+    """Extract (site_name, image_id) from a detection frame filename following the
+    '{Site.Name}_{date}_{time}_{Species}_{Image.ID}' naming convention, e.g.
+    'XA03_20240510_083624_Steenbok_176090990.jpg' -> ('XA03', '176090990')"""
+    filename = os.path.splitext(os.path.basename(image_path))[0]
+    parts = filename.split("_")
+    site_name = parts[0]
+    image_id = parts[-1]
+    return site_name, image_id
+
+
+def load_box_data_csv(csv_path):
+    """Load precomputed detections (e.g. exported from TrapTagger) from a CSV with
+    'Site.Name', 'Image.ID', 'Score', 'Left', 'Right', 'Top', 'Bottom' columns.
+    Left/Right/Top/Bottom are fractions of image width/height respectively.
+    Returns a dict mapping (site_name, image_id) to a list of detections, since an
+    image may contain multiple sightings."""
+    box_data = defaultdict(list)
+    with open(csv_path, newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            key = (row["Site.Name"], row["Image.ID"])
+            box_data[key].append({
+                "score": float(row["Score"]),
+                "left": float(row["Left"]),
+                "right": float(row["Right"]),
+                "top": float(row["Top"]),
+                "bottom": float(row["Bottom"]),
+            })
+    return dict(box_data)
 
 
 def depth_from_file(path):
@@ -160,7 +194,7 @@ def calibrate(x, y, method, n=2, poly_deg=5):
                 return calibrate(x, y, method=RegressionMethod.RANSAC, n=n)
 
         if method == RegressionMethod.RANSAC_POLY:
-            # adapted from https://gist.github.com/geohot/9743ad59598daf61155bf0d43a10838c
+            # adapted from a public RANSAC polynomial-fit implementation
 
             n = 20  # minimum number of data points required to fit the model
             k = 100  # maximum number of iterations allowed in the algorithm
@@ -321,7 +355,7 @@ def calibrate_v0(x, y, method, n=2, poly_deg=5):
                 return calibrate(x, y, method=RegressionMethod.RANSAC, n=n)
 
         if method == RegressionMethod.RANSAC_POLY:
-            # adapted from https://gist.github.com/geohot/9743ad59598daf61155bf0d43a10838c
+            # adapted from a public RANSAC polynomial-fit implementation
 
             # n – minimum number of data points required to fit the model
             # k – maximum number of iterations allowed in the algorithm
@@ -381,7 +415,7 @@ def exception_to_str(e: Exception):
     return "".join(traceback.format_exception(sys.exc_info()[0], sys.exc_info()[1], sys.exc_info()[2]))
 
 
-# taken from https://github.com/python/cpython/issues/69247#issuecomment-1308082792
+# workaround for lowercase-argument Enum parsing in argparse, based on a CPython issue discussion
 class EnumActionLowerCase(argparse.Action):
     """
     Action to accept Enums by lowercase name and output an enum value.

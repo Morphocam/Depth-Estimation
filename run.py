@@ -20,7 +20,7 @@ from depthpro import DepthPro
 from megadetector import MegaDetector, MegaDetectorV2, MegaDetectorV6, MegaDetectorLabel
 from sam import SAM
 from custom_types import DetectionSamplingMethod, MultipleAnimalReduction, SampleFrom, DepthEstimationModel, DetectionModel
-from utils import calibrate, calibrate_v0, piecewise_linear_calibration, crop, resize, exception_to_str, get_calibration_frame_dist, get_extension_agnostic_path, multi_file_extension_glob, blur_and_downsample, imread
+from utils import calibrate, calibrate_v0, piecewise_linear_calibration, crop, resize, exception_to_str, get_calibration_frame_dist, get_extension_agnostic_path, multi_file_extension_glob, blur_and_downsample, imread, parse_site_and_image_id, load_box_data_csv
 from visualization import visualize_detection, visualize_farthest_calibration_frame
 
 
@@ -97,7 +97,11 @@ def run(config: Config, gui=False):
     else:
         raise ValueError(f"Invalud depth estimation model '{config.depth_estimation_model}'")
     yield
-    if config.detection_model == DetectionModel.MEGADETECTOR_V6:
+    box_data = None
+    if config.box_data_csv:
+        box_data = load_box_data_csv(config.box_data_csv)
+        megadetector = None
+    elif config.detection_model == DetectionModel.MEGADETECTOR_V6:
         megadetector = MegaDetectorV6()
     elif config.detection_model == DetectionModel.MEGADETECTOR_V5B:
         megadetector = MegaDetectorV2()
@@ -224,7 +228,7 @@ def run(config: Config, gui=False):
 
                 if gui and notifier is not None:
                     try:
-                        notifier.send(title="Distance Estimation Error", message=notification_str)
+                        notifier.send(title="Depth Estimation v2 Error", message=notification_str)
                     except Exception as e:
                         logging.error(f"Failed to send desktop notification: {exception_to_str(e)}")
                 result_csv_writer.writerow([transect_id, "", "", "", "", "", "", "", notification_str])
@@ -244,7 +248,20 @@ def run(config: Config, gui=False):
                         yield StatusUpdate(transect_id, transect_idx, len(transect_dirs), f"batch {detection_idx}", detection_idx, len(detection_dataloader))
 
                         # run animal detection
-                        megadetector_results = megadetector(imgs)
+                        if box_data is not None:
+                            megadetector_results = []
+                            for img, image_path in zip(imgs, image_paths):
+                                height, width = img.shape[0], img.shape[1]
+                                entries = box_data.get(parse_site_and_image_id(image_path), [])
+                                scores = np.array([entry["score"] for entry in entries], dtype=np.float32)
+                                labels = np.full(len(entries), MegaDetectorLabel.ANIMAL, dtype=np.int64)
+                                boxes = np.array([
+                                    [entry["left"] * width, entry["top"] * height, entry["right"] * width, entry["bottom"] * height]
+                                    for entry in entries
+                                ], dtype=np.float32).reshape(-1, 4)
+                                megadetector_results.append((scores, labels, boxes))
+                        else:
+                            megadetector_results = megadetector(imgs)
                         yield
 
                         # process megadetector results
@@ -457,7 +474,7 @@ def run(config: Config, gui=False):
 
                         if gui and notifier is not None:
                             try:
-                                notifier.send(title="Distance Estimation Error", message=notification_str)
+                                notifier.send(title="Depth Estimation v2 Error", message=notification_str)
                             except Exception as e:
                                 logging.error(f"Failed to send desktop notification: {exception_to_str(e)}")
                         result_csv_writer.writerow([transect_id, "", "", "", "", "", "", "", notification_str])
