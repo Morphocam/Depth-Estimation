@@ -13,5 +13,5 @@ platformdirs==4.4.0
 timm==1.0.20
 dmgbuild==1.6.5; platform_system == "Darwin"
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.2.0+cpu; platform_system == "Linux" and platform_machine not in "aarch64, arm64"
-torch==2.2.0; platform_system != "Linux" or platform_machine in "aarch64, arm64"
+torch==2.11.0+cpu; platform_system == "Linux" and platform_machine not in "aarch64, arm64"
+torch==2.11.0; platform_system != "Linux" or platform_machine in "aarch64, arm64"
