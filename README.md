@@ -301,7 +301,8 @@ The pipeline additionally builds on the following third-party models — please 
 
 ## Acknowledgements
 
-This work was supported by the Natural Environment Research Council (NERC). Thanks to Phil Garthen, Hari Surya Charan Mudragada, Stefanie Schwarz, Sebastian Speth, Hendrik Edelhoff and Ludwig Bothmann for pointing out an implementation issue with the computation of world coordinates.
+This work was supported by the Natural Environment Research Council. The authors extend their sincere gratitude to the management and research staff of the Bubye Valley
+Conservancy for their support and assistance with data collection. We also thank the Paul G. Allen Family Foundation for its generous funding contributions to the WildCAT Trust in Zimbabwe, which made the Bubye Valley Conservancy survey possible.
 
 ## License
 
